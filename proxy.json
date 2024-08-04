@@ -1,0 +1,6 @@
+[
+  {"relativePath":"/shared/test.zip",
+    "remote":"http://127.0.0.1:8181/shared/test.zip"},
+  {"relativePath":"/shared/test1.zip",
+    "remote":"http://127.0.0.1:8181/shared/test1.zip"}
+]
