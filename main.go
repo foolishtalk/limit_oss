@@ -10,6 +10,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 )
 
 type ProxyConfig struct {
@@ -17,14 +19,79 @@ type ProxyConfig struct {
 	Remote       string `json:"remote"`
 }
 
+type InterceptHandler struct {
+	todayRequest string
+	minute       InterceptPolicy
+	hour         InterceptPolicy
+}
+
+type InterceptPolicy struct {
+	lastTime int64
+	count    int64
+}
+
+type PolicyResult struct {
+	result  bool
+	expired int64
+}
+
+var interceptHandler = new(InterceptHandler)
+
+func shouldBlockRequest() PolicyResult {
+
+	currentDay := time.Now().Format("2006-01-02")
+	if interceptHandler.todayRequest == "" || currentDay != interceptHandler.todayRequest {
+		interceptHandler.todayRequest = currentDay
+
+	}
+	minutePolicy := checkPolicy(&interceptHandler.minute, 60, 5)
+	if minutePolicy.result {
+		return minutePolicy
+	}
+
+	hourPolicy := checkPolicy(&interceptHandler.hour, 3600, 30)
+	if hourPolicy.result {
+		return hourPolicy
+	}
+	return minutePolicy
+}
+
+func resetPolicy(policy *InterceptPolicy) {
+	policy.lastTime = time.Now().Unix()
+	policy.count = 0
+}
+
+func checkPolicy(policy *InterceptPolicy, second int64, maxCount int64) PolicyResult {
+	expired := second - (time.Now().Unix() - policy.lastTime)
+	if expired > 0 {
+		if policy.count < maxCount {
+			policy.count++
+		} else {
+			return PolicyResult{result: true, expired: expired}
+		}
+	} else {
+		resetPolicy(policy)
+	}
+	return PolicyResult{result: false, expired: 0}
+}
+
 func proxy(c *gin.Context, remote *url.URL) {
+	// get current time
+	policy := shouldBlockRequest()
+	if policy.result {
+		c.JSON(200, gin.H{
+			"code":   0,
+			"cn_msg": "目前下载的人数太多，请稍等" + strconv.FormatInt(policy.expired, 10) + "秒后再试",
+			"en_msg": "Currently, there are too many people downloading. Please wait for" + strconv.FormatInt(policy.expired, 10) + " seconds and try again.",
+		})
+		return
+	}
 
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	proxy.Director = func(req *http.Request) {
-		fmt.Println(req.URL)
 		req.Header = c.Request.Header
 		req.Host = remote.Host
 		req.URL.Scheme = remote.Scheme
@@ -65,6 +132,9 @@ func main() {
 	r := gin.Default()
 	// parse proxy
 	configs := parseProxyJSON()
+
+	resetPolicy(&interceptHandler.minute)
+	resetPolicy(&interceptHandler.hour)
 
 	for i := 0; i < len(configs); i++ {
 		remote, err := url.Parse(configs[i].Remote)
