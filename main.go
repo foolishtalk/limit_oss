@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,7 @@ type PolicyResult struct {
 }
 
 var interceptHandler = new(InterceptHandler)
+var interceptMutex sync.Mutex
 
 func shouldBlockRequest() PolicyResult {
 
@@ -57,15 +59,19 @@ func shouldBlockRequest() PolicyResult {
 }
 
 func resetPolicy(policy *InterceptPolicy) {
+	interceptMutex.Lock()
 	policy.lastTime = time.Now().Unix()
 	policy.count = 0
+	interceptMutex.Unlock()
 }
 
 func checkPolicy(policy *InterceptPolicy, second int64, maxCount int64) PolicyResult {
 	expired := second - (time.Now().Unix() - policy.lastTime)
 	if expired > 0 {
 		if policy.count < maxCount {
+			interceptMutex.Lock()
 			policy.count++
+			interceptMutex.Unlock()
 		} else {
 			return PolicyResult{result: true, expired: expired}
 		}
