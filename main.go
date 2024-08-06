@@ -15,29 +15,9 @@ import (
 	"time"
 )
 
-type ProxyConfig struct {
-	RelativePath string `json:"relativePath"`
-	Remote       string `json:"remote"`
-}
-
-type InterceptHandler struct {
-	todayRequest string
-	minute       InterceptPolicy
-	hour         InterceptPolicy
-}
-
-type InterceptPolicy struct {
-	lastTime int64
-	count    int64
-}
-
-type PolicyResult struct {
-	result  bool
-	expired int64
-}
-
 var interceptHandler = new(InterceptHandler)
 var interceptMutex sync.Mutex
+var config PolicyConfig
 
 func shouldBlockRequest() PolicyResult {
 
@@ -47,11 +27,13 @@ func shouldBlockRequest() PolicyResult {
 
 	}
 	minutePolicy := checkPolicy(&interceptHandler.minute, 60, 5)
+	minutePolicy.policyType = minute
 	if minutePolicy.result {
 		return minutePolicy
 	}
 
 	hourPolicy := checkPolicy(&interceptHandler.hour, 3600, 30)
+	hourPolicy.policyType = hour
 	if hourPolicy.result {
 		return hourPolicy
 	}
@@ -84,7 +66,15 @@ func checkPolicy(policy *InterceptPolicy, second int64, maxCount int64) PolicyRe
 func proxy(c *gin.Context, remote *url.URL) {
 	// get current time
 	policy := shouldBlockRequest()
+
 	if policy.result {
+		switch policy.policyType {
+		case minute:
+			wecomNotify("每分钟下载上限告警", config.Wecom_hook_url)
+		case hour:
+			wecomNotify("每小时下载上限告警", config.Wecom_hook_url)
+		}
+
 		c.JSON(200, gin.H{
 			"code":   0,
 			"cn_msg": "目前下载的人数太多，请稍等" + strconv.FormatInt(policy.expired, 10) + "秒后再试",
@@ -108,7 +98,7 @@ func proxy(c *gin.Context, remote *url.URL) {
 	proxy.ServeHTTP(c.Writer, c.Request)
 }
 
-func parseProxyJSON() []ProxyConfig {
+func parseProxyJSON() {
 	// read local file
 	jsonFile, err := os.Open("proxy.json")
 	// if we os.Open returns an error then handle it
@@ -125,30 +115,27 @@ func parseProxyJSON() []ProxyConfig {
 
 	byteValue, _ := io.ReadAll(jsonFile)
 
-	var configs []ProxyConfig
-
-	err = json.Unmarshal(byteValue, &configs)
+	err = json.Unmarshal(byteValue, &config)
 	if err != nil {
 		panic(err)
 	}
-	return configs
 }
 
 func main() {
 	r := gin.Default()
 	// parse proxy
-	configs := parseProxyJSON()
+	parseProxyJSON()
 
 	resetPolicy(&interceptHandler.minute)
 	resetPolicy(&interceptHandler.hour)
 
-	for i := 0; i < len(configs); i++ {
-		remote, err := url.Parse(configs[i].Remote)
+	for i := 0; i < len(config.Proxys); i++ {
+		remote, err := url.Parse(config.Proxys[i].Remote)
 		if err != nil {
 			panic(err)
 		}
 
-		r.Any(configs[i].RelativePath, func(c *gin.Context) {
+		r.Any(config.Proxys[i].RelativePath, func(c *gin.Context) {
 			proxy(c, remote)
 		})
 
