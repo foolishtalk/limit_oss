@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -103,13 +103,13 @@ func parseProxyJSON() {
 	jsonFile, err := os.Open("proxy.json")
 	// if we os.Open returns an error then handle it
 	if err != nil {
-		panic(err)
+		logrus.Panic(err)
 	}
-	fmt.Println("Successfully Opened proxy.json")
+
 	defer func(jsonFile *os.File) {
 		err := jsonFile.Close()
 		if err != nil {
-			panic(err)
+			logrus.Panic(err)
 		}
 	}(jsonFile)
 
@@ -117,12 +117,31 @@ func parseProxyJSON() {
 
 	err = json.Unmarshal(byteValue, &config)
 	if err != nil {
-		panic(err)
+		logrus.Panic(err)
 	}
 }
 
 func main() {
+	gin.SetMode(gin.ReleaseMode)
+	logrus.SetReportCaller(true)
+	// 创建日志文件
+	f, err := os.OpenFile("gin.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			logrus.Panic(err)
+		}
+	}(f)
+	// 设置 Logrus 输出到文件
+	logrus.SetOutput(f)
+
+	// 设置 Gin 使用默认的日志中间件
+	gin.DefaultWriter = f
 	r := gin.Default()
+
 	// parse proxy
 	parseProxyJSON()
 
@@ -132,7 +151,7 @@ func main() {
 	for i := 0; i < len(config.Proxys); i++ {
 		remote, err := url.Parse(config.Proxys[i].Remote)
 		if err != nil {
-			panic(err)
+			logrus.Panic(err)
 		}
 
 		r.Any(config.Proxys[i].RelativePath, func(c *gin.Context) {
@@ -141,7 +160,7 @@ func main() {
 
 	}
 
-	err := r.Run(":9191")
+	err = r.Run(":9191")
 	if err != nil {
 		panic(err)
 	}

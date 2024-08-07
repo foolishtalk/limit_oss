@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 )
@@ -19,7 +19,7 @@ func wecomNotify(content string, url string) {
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
-		fmt.Println("create request failed:", err)
+		logrus.Info("create request failed:", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -27,20 +27,20 @@ func wecomNotify(content string, url string) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("request failed:", err)
+		logrus.Info("request failed:", err)
 		return
 	}
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			panic(err)
+			logrus.Panic(err)
 		}
 	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("response fail:", err)
+		logrus.Info("response fail:", err)
 		return
 	}
-	fmt.Println("response:", string(body))
+	logrus.Info("response:", string(body))
 }
