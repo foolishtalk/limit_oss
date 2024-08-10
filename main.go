@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/takama/daemon"
@@ -176,6 +177,16 @@ func main() {
 		}
 
 		r.Any(config.Proxys[i].RelativePath, func(c *gin.Context) {
+			if p := recover(); p != nil {
+				if err, ok := p.(error); ok {
+					// ignore panic abort handler for text/event-stream SSE
+					if errors.Is(err, http.ErrAbortHandler) {
+						logrus.Error(err)
+						return
+					}
+				}
+				c.AbortWithStatus(http.StatusInternalServerError)
+			}
 			proxy(c, remote)
 		})
 
