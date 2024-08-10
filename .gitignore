@@ -27,4 +27,4 @@ go.work.sum
 proxy.json
 app
 gin.log
-
+limit_oss_app

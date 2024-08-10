@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/takama/daemon"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -121,25 +123,44 @@ func parseProxyJSON() {
 	}
 }
 
-func main() {
-	gin.SetMode(gin.ReleaseMode)
-	logrus.SetReportCaller(true)
-	// 创建日志文件
-	f, err := os.OpenFile("gin.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+func installDaemon() {
+	kind := daemon.SystemDaemon
+	switch runtime.GOOS {
+	case "darwin":
+		kind = daemon.GlobalDaemon
+	default:
+		kind = daemon.SystemDaemon
+	}
+	service, err := daemon.New("limit_oss", "limit oss download", kind)
 	if err != nil {
 		panic(err)
 	}
-	defer func(f *os.File) {
-		err := f.Close()
-		if err != nil {
-			logrus.Panic(err)
-		}
-	}(f)
+	status, err := service.Install()
+	if err != nil {
+		logrus.Info("daemon install:" + err.Error())
+	}
+	logrus.Info("daemon status:" + status)
+}
+
+func installLogrus() {
+	logrus.SetReportCaller(true)
+	// 创建日志文件
+	f, err := os.Create("gin.log")
+	if err != nil {
+		panic(err)
+	}
+
 	// 设置 Logrus 输出到文件
 	logrus.SetOutput(f)
-
 	// 设置 Gin 使用默认的日志中间件
 	gin.DefaultWriter = f
+}
+
+func main() {
+	gin.SetMode(gin.ReleaseMode)
+
+	installLogrus()
+	installDaemon()
 	r := gin.Default()
 
 	// parse proxy
@@ -160,7 +181,7 @@ func main() {
 
 	}
 
-	err = r.Run(":9191")
+	err := r.Run(":9191")
 	if err != nil {
 		panic(err)
 	}
