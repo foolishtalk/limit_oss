@@ -147,7 +147,7 @@ func installLogrus() {
 	// 创建日志文件
 	f, err := os.Create("gin.log")
 	if err != nil {
-		panic(err)
+		logrus.Info("gin.log create:" + err.Error())
 	}
 
 	// 设置 Logrus 输出到文件
