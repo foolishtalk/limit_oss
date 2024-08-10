@@ -196,9 +196,11 @@ func customRecoveryMiddleware() gin.HandlerFunc {
 				if err, ok := p.(error); ok {
 					// ignore panic abort handler for text/event-stream SSE
 					if errors.Is(err, http.ErrAbortHandler) {
+						logrus.Info("return abort:" + err.Error())
 						return
 					}
 				}
+				logrus.Info("abort with status")
 				c.AbortWithStatus(http.StatusInternalServerError)
 			}
 		}()
