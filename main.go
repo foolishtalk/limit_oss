@@ -163,6 +163,7 @@ func main() {
 	installLogrus()
 	installDaemon()
 	r := gin.Default()
+	r.Use(customRecoveryMiddleware())
 
 	// parse proxy
 	parseProxyJSON()
@@ -177,16 +178,6 @@ func main() {
 		}
 
 		r.Any(config.Proxys[i].RelativePath, func(c *gin.Context) {
-			if p := recover(); p != nil {
-				if err, ok := p.(error); ok {
-					// ignore panic abort handler for text/event-stream SSE
-					if errors.Is(err, http.ErrAbortHandler) {
-						logrus.Error(err)
-						return
-					}
-				}
-				c.AbortWithStatus(http.StatusInternalServerError)
-			}
 			proxy(c, remote)
 		})
 
@@ -195,5 +186,22 @@ func main() {
 	err := r.Run(":9191")
 	if err != nil {
 		panic(err)
+	}
+}
+
+func customRecoveryMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if p := recover(); p != nil {
+				if err, ok := p.(error); ok {
+					// ignore panic abort handler for text/event-stream SSE
+					if errors.Is(err, http.ErrAbortHandler) {
+						return
+					}
+				}
+				c.AbortWithStatus(http.StatusInternalServerError)
+			}
+		}()
+		c.Next()
 	}
 }
